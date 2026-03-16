@@ -1,0 +1,35 @@
+# ACE Framework Requirements
+# Agentic Context Engineering Reproduction
+
+# ============================================================================
+# Core Dependencies (Required)
+# ============================================================================
+zai>=0.1.0             # ZhipuAI SDK for GLM-4.6v API
+langgraph>=0.2.0        # LangGraph for stateful evolution loop
+pydantic>=2.0.0         # Data validation
+
+# ============================================================================
+# Data Processing (Required)
+# ============================================================================
+pandas>=2.0.0           # Data manipulation
+numpy>=1.24.0           # Numerical computing
+
+# ============================================================================
+# Utilities (Required)
+# ============================================================================
+python-dotenv>=1.0.0    # Environment variables
+pyyaml>=6.0             # YAML config files
+tqdm>=4.65.0            # Progress bars
+requests>=2.31.0        # HTTP requests
+
+# ============================================================================
+# Optional Dependencies (install if needed)
+# ============================================================================
+# datasets>=2.0.0       # Hugging Face datasets (for loading data)
+# wandb>=0.15.0         # Experiment tracking
+
+# ============================================================================
+# Development Tools (optional, for testing)
+# ============================================================================
+# pytest>=7.4.0         # Testing
+# black>=23.0.0         # Code formatting

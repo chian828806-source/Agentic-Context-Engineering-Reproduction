@@ -1,0 +1,38 @@
+# ACE Configuration File
+
+# LLM Configuration
+llm:
+  model: "glm-4.6"
+  base_url: "https://open.bigmodel.cn/api/paas/v4/"
+  api_key_env: "ZHIPUAI_API_KEY"
+
+# Training Configuration
+training:
+  max_generations: 1000
+  total_epochs: 5
+  plateau_threshold: 3
+  eval_every_n_samples: 50
+
+# Playbook Configuration
+playbook:
+  max_playbook_size: 10000
+  max_bullets_per_section: 20
+
+# Node Temperatures
+temperatures:
+  generator: 0.7
+  reflector: 0.3
+  curator: 0.2
+
+# Data Configuration
+data:
+  task_type: "gsm8k"
+  train_size: 1000
+  val_size: 100
+  validation_max_samples: 100
+
+# Logging Configuration
+logging:
+  logs_dir: "logs"
+  save_checkpoints: true
+  verbose: true
