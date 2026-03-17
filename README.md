@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 ## Setup
 
-1. **Set your GLM-4.6 API key:**
+1. **Set your GLM API key:**
 ```bash
 export ZHIPUAI_API_KEY="your_api_key_here"
 ```
@@ -56,24 +56,26 @@ Or create a `.env` file:
 ZHIPUAI_API_KEY=your_api_key_here
 ```
 
-2. **Download GSM8K dataset:**
-```bash
-# Create sample data for testing
-python main.py --create-sample
+2. **Prepare FINER dataset files:**
 
-# Or download full dataset from:
-# https://github.com/openai/grade-school-math
+This project expects FINER JSONL files with fields `id`, `tokens`, `ner_tags`:
+```json
+{"id": 0, "tokens": ["..."], "ner_tags": ["O", "B-..."]}
 ```
+
+Use the provided subset files for reproduction:
+- `data/train_sub.jsonl`
+- `data/validation_sub.jsonl`
+- `data/test_sub.jsonl`
 
 ## Usage
 
-### Basic Training
+### Basic Training (FINER)
 
 ```bash
 python main.py \
-    --task gsm8k \
-    --train-data data/gsm8k_train.jsonl \
-    --val-data data/gsm8k_test.jsonl \
+    --train-data data/train_sub.jsonl \
+    --val-data data/validation_sub.jsonl \
     --train-size 100 \
     --val-size 50
 ```
@@ -88,14 +90,15 @@ python main.py --config configs/ace_config.yaml
 
 | Option | Description | Default |
 |:---|:---|:---|
-| `--task` | Task type (gsm8k, finer) | gsm8k |
-| `--train-data` | Path to training data | data/gsm8k_train.jsonl |
-| `--val-data` | Path to validation data | data/gsm8k_test.jsonl |
+| `--train-data` | Path to training data | data/finer_train.jsonl |
+| `--val-data` | Path to validation data | data/finer_test.jsonl |
 | `--train-size` | Number of training samples | 100 |
 | `--val-size` | Number of validation samples | 50 |
 | `--config` | Path to config YAML | None |
-| `--create-sample` | Create sample data file | False |
 | `--api-key` | API key (overrides env) | None |
+| `--api-key-env` | Env var name for API key | ZHIPUAI_API_KEY |
+| `--model` | Model name | glm-4.6v |
+| `--base-url` | API base URL override | (default in code) |
 
 ## Results
 
@@ -149,8 +152,8 @@ The playbook is organized into sections:
 
 ### Differences from Paper
 
-- Uses GLM-4.6 instead of DeepSeek-V3.1
-- Simplified evaluation (no full agent environment for GSM8K)
+- Uses GLM instead of DeepSeek-V3.1
+- Simplified evaluation for FINER NER sequence tagging
 - Single-process implementation (no parallel rollout)
 
 ## Baselines
@@ -159,11 +162,10 @@ Baseline methods are implemented in `baselines/`:
 
 - `rag_baseline.py`: Retrieval-Augmented Generation
 - `fewshot_baseline.py`: Few-shot prompting
-- `icl_baseline.py`: In-Context Learning
 
-Run baselines with:
+Run baselines on FINER subsets (adjust scripts to FINER if needed):
 ```bash
-python baselines/rag_baseline.py --data data/gsm8k_test.jsonl
+python baselines/rag_baseline.py --test-data data/test_sub.jsonl
 ```
 
 ## Citation

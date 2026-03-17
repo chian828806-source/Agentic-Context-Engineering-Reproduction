@@ -1,15 +1,12 @@
 """
-Generator Node for ACE Framework
-
-The Generator node uses the current playbook to generate answers for tasks.
+Generator Node for ACE Framework (FINER-only)
 """
 
 import json
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from ..llm.glm_client import GLMClient
 from ..prompts.generator_prompts import get_generator_prompt
-from ..prompts.reflector_prompts import compare_answers_numeric
 
 
 class GeneratorNode:
@@ -28,7 +25,7 @@ class GeneratorNode:
         llm_client: GLMClient,
         max_retries: int = 3,
         temperature: float = 0.7,
-        task_type: str = "gsm8k",
+        task_type: str = "finer",
     ):
         """
         Initialize the Generator node.
@@ -37,7 +34,7 @@ class GeneratorNode:
             llm_client: GLM-4.6 client instance
             max_retries: Maximum number of retry attempts
             temperature: Sampling temperature for generation
-            task_type: Type of task (gsm8k, finer, etc.)
+            task_type: Type of task (finer)
         """
         self.llm_client = llm_client
         self.max_retries = max_retries
@@ -51,38 +48,38 @@ class GeneratorNode:
         Args:
             state: Current ACEState containing:
                 - current_playbook: Current playbook with strategies
-                - current_sample: Sample to solve (with 'question' key)
+                - current_sample: Sample to solve (with 'text' key for FINER)
 
         Returns:
             Dict with updates to state:
                 - generated_answer: The final answer
                 - generator_trace: The reasoning trace
+                - bullet_ids: List of relevant playbook bullet IDs
         """
         playbook = state.get("current_playbook", {})
         sample = state.get("current_sample", {})
 
-        if not sample or "question" not in sample:
+        if not sample or "text" not in sample:
             return {
                 "generated_answer": None,
-                "generator_trace": "Error: No question provided in sample.",
+                "generator_trace": "Error: No text provided in sample.",
+                "bullet_ids": [],
             }
 
-        question = sample["question"]
+        text = sample["text"]
+
+        tokens = sample.get("tokens", [])
+        context = ""
+        if tokens:
+            context = f"Tokens: {tokens}"
 
         # Build prompt
-        if self.task_type == "finer" and "context" in sample:
-            prompt = get_generator_prompt(
-                question=question,
-                playbook=playbook,
-                task_type=self.task_type,
-                context=sample["context"],
-            )
-        else:
-            prompt = get_generator_prompt(
-                question=question,
-                playbook=playbook,
-                task_type=self.task_type,
-            )
+        prompt = get_generator_prompt(
+            question=text,
+            playbook=playbook,
+            context=context,
+            reflection="{}",
+        )
 
         # Call LLM with retry logic
         response = None
@@ -120,23 +117,24 @@ class GeneratorNode:
                 "generator_trace": f"Error: Generator failed after {self.max_retries} attempts. Last error: {last_error}",
             }
 
-        # Extract answer and trace
+        # Extract answer, trace and bullet IDs
         trace = response.get("reasoning", "")
         answer = response.get("final_answer", response.get("answer", ""))
+        bullet_ids = response.get("bullet_ids", [])
 
         return {
             "generated_answer": answer,
             "generator_trace": trace,
+            "bullet_ids": bullet_ids,
         }
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the Generator."""
-        if self.task_type == "gsm8k":
-            return "You are an expert mathematical problem solver. Always provide clear step-by-step reasoning and a final numeric answer."
-        elif self.task_type == "finer":
-            return "You are an expert financial analyst. Provide precise numerical answers with proper formatting."
-        else:
-            return "You are a helpful AI assistant. Provide accurate, well-reasoned answers."
+        return (
+            "You are an analysis expert tasked with answering questions using your knowledge, "
+            "a curated playbook of strategies and insights and a reflection that goes over the "
+            "diagnosis of all previous mistakes made while answering the question."
+        )
 
     def _parse_fallback_response(self, response_text: str) -> Dict[str, str]:
         """
@@ -164,9 +162,8 @@ class GeneratorNode:
 
         # Look for final answer patterns
         answer_patterns = [
-            r'(?:final answer|answer|therefore|thus|is)\s*:?\s*([-\d,]+\.?\d*)',
             r'\{\s*"final_answer"\s*:\s*"([^"]+)"',
-            r'The answer is\s+([-\d,]+\.?\d*)',
+            r'final answer\s*:?\s*(.+)',
         ]
 
         for pattern in answer_patterns:
@@ -176,10 +173,7 @@ class GeneratorNode:
                 break
 
         if not answer:
-            # Get last number as answer
-            numbers = re.findall(r'[-+]?\d*\.?\d+', response_text)
-            if numbers:
-                answer = numbers[-1]
+            answer = response_text[:200]
 
         return {
             "reasoning": reasoning[:1000],  # Limit trace length
@@ -209,8 +203,8 @@ class GeneratorNode:
 
             result = self(temp_state)
             results.append({
-                "question": sample.get("question", ""),
-                "ground_truth": sample.get("answer", ""),
+                "text": sample.get("text", ""),
+                "ground_truth_ner": sample.get("ner_tags", []),
                 "generated_answer": result.get("generated_answer"),
                 "trace": result.get("generator_trace", ""),
             })
@@ -221,28 +215,41 @@ class GeneratorNode:
 def evaluate_generated_answer(
     generated_answer: Any,
     ground_truth: Any,
-    tolerance: float = 0.01,
 ) -> Dict[str, Any]:
     """
-    Evaluate a generated answer against ground truth.
-
-    Args:
-        generated_answer: The answer produced by Generator
-        ground_truth: The correct answer
-        tolerance: Relative tolerance for numeric comparison
-
-    Returns:
-        Dict with evaluation results
+    Evaluate a generated answer against FINER ground truth tags.
     """
-    is_correct, rel_error = compare_answers_numeric(
-        str(generated_answer),
-        str(ground_truth),
-        tolerance,
+    def _parse_list(value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        return [str(v) for v in parsed]
+                except Exception:
+                    pass
+            return text.split()
+        return None
+
+    gt_list = _parse_list(ground_truth)
+    gen_list = _parse_list(generated_answer)
+
+    is_correct = (
+        gt_list is not None
+        and gen_list is not None
+        and len(gt_list) == len(gen_list)
+        and all(g == t for g, t in zip(gen_list, gt_list))
     )
 
     return {
         "is_correct": is_correct,
-        "relative_error": rel_error,
         "generated": str(generated_answer),
         "ground_truth": str(ground_truth),
     }

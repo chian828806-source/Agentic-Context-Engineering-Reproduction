@@ -1,7 +1,5 @@
 """
-Curator Node for ACE Framework
-
-The Curator node updates the playbook based on reflections from errors.
+Curator Node for ACE Framework (FINER-only)
 """
 
 import json
@@ -33,7 +31,7 @@ class CuratorNode:
         temperature: float = 0.2,
         max_playbook_size: int = 10000,
         max_bullets_per_section: int = 20,
-        task_type: str = "gsm8k",
+        task_type: str = "finer",
     ):
         """
         Initialize the Curator node.
@@ -44,7 +42,7 @@ class CuratorNode:
             temperature: Sampling temperature (low for consistent updates)
             max_playbook_size: Approximate max token size
             max_bullets_per_section: Max bullets per section before compression
-            task_type: Type of task
+            task_type: Type of task (finer)
         """
         self.llm_client = llm_client
         self.max_retries = max_retries
@@ -95,7 +93,7 @@ class CuratorNode:
 
         # Build curator prompt
         prompt = get_curator_prompt(
-            question_context=sample.get("question", ""),
+            question_context=sample.get("text", ""),
             current_playbook=playbook,
             reflection=reflection,
             token_budget=token_budget,
@@ -138,9 +136,8 @@ class CuratorNode:
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the Curator."""
         return (
-            "You are a knowledge curator. Your job is to ADD new, unique insights to a playbook. "
-            "NEVER regenerate existing content. Only add what is genuinely new and helpful. "
-            "Be concise and specific."
+            "You are a master curator of knowledge. Your job is to identify what new insights should be added "
+            "to an existing playbook based on a reflection from a previous attempt."
         )
 
     def _maybe_compress_playbook(

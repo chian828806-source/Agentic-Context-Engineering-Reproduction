@@ -148,7 +148,7 @@ class ACEGraph:
         if generated is None or ground_truth is None:
             return {"error_samples": []}
 
-        is_correct = self.evaluator.compare_answers(generated, ground_truth)
+        is_correct = self.evaluator.compare_finer_answers(generated, ground_truth)
 
         if not is_correct:
             error_sample = {

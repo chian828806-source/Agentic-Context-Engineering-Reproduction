@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import argparse
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -22,7 +23,7 @@ load_env()
 from src.llm.glm_client import GLMClient
 from src.state.graph_state import ACEState, initialize_state, copy_playbook
 from src.graph.ace_graph import ACEGraph
-from src.utils.data_loader import load_gsm8k, load_finer, create_sample_gsm8k, print_data_stats
+from src.utils.data_loader import load_finer, print_data_stats
 from src.utils.logger import ACELogger
 from src.utils.playbook import Playbook
 from src.nodes.generator import GeneratorNode
@@ -113,11 +114,12 @@ def train_ace(
     print("="*60)
 
     # Initialize LLM client
-    print(f"\nInitializing GLM-4.6 client...")
+    print(f"\nInitializing GLM client...")
     llm_client = GLMClient(
         api_key=os.getenv(config["api_key_env"]),
         base_url=config["base_url"],
         model=config["model"],
+        api_key_env=config["api_key_env"],
     )
 
     # Test connection
@@ -167,17 +169,26 @@ def train_ace(
     print("Starting evolution loop...")
     print("-"*60)
 
+    def _progress_bar(current: int, total: int, width: int = 30) -> str:
+        if total <= 0:
+            return "[no samples]"
+        filled = int(width * current / total)
+        return "[" + "#" * filled + "-" * (width - filled) + f"] {current}/{total}"
+
     for epoch in range(config["total_epochs"]):
         print(f"\n{'='*60}")
         print(f"Epoch {epoch + 1}/{config['total_epochs']}")
         print(f"{'='*60}")
 
         epoch_samples_processed = 0
+        epoch_start = time.time()
+        total_samples = len(train_data)
 
         for sample_idx, sample in enumerate(train_data):
+            sample_start = time.time()
             # Update state with current sample
             initial_state["current_sample"] = sample
-            initial_state["ground_truth"] = sample.get("answer")
+            initial_state["ground_truth"] = sample.get("ner_tags")
 
             # Run one evolution step
             result = compiled_graph.invoke(initial_state)
@@ -189,8 +200,18 @@ def train_ace(
             epoch_samples_processed += 1
             initial_state["samples_processed"] += 1
 
+            elapsed = time.time() - sample_start
+            avg = (time.time() - epoch_start) / max(1, epoch_samples_processed)
+            progress = _progress_bar(sample_idx + 1, total_samples)
+            print(
+                f"\rEpoch {epoch + 1} {progress} | sample {elapsed:.2f}s | avg {avg:.2f}s",
+                end="",
+                flush=True,
+            )
+
             # Periodic evaluation
             if (sample_idx + 1) % config["eval_every_n_samples"] == 0:
+                print("\nRunning periodic evaluation...")
                 current_accuracy = initial_state["fitness_score"]
 
                 # Run evaluation
@@ -198,6 +219,7 @@ def train_ace(
                     initial_state,
                     val_data[:config.get("validation_max_samples", 100)],
                 )
+                print("Evaluation complete.")
 
                 accuracy = eval_result["accuracy"]
                 initial_state["fitness_score"] = accuracy
@@ -250,6 +272,7 @@ def train_ace(
                     break
 
         # End of epoch
+        print()
         print(f"\nEpoch {epoch + 1} completed. Processed {epoch_samples_processed} samples.")
 
         if initial_state["no_improvement_count"] >= config["plateau_threshold"]:
@@ -302,21 +325,14 @@ def main():
     parser.add_argument(
         "--train-data",
         type=str,
-        default="data/finer_train.jsonl",
+        default="data/train_sub.jsonl",
         help="Path to training data",
     )
     parser.add_argument(
         "--val-data",
         type=str,
-        default="data/finer_test.jsonl",
+        default="data/validation_sub.jsonl",
         help="Path to validation data",
-    )
-    parser.add_argument(
-        "--task",
-        type=str,
-        default="gsm8k",
-        choices=["gsm8k", "finer"],
-        help="Task type",
     )
     parser.add_argument(
         "--train-size",
@@ -331,42 +347,45 @@ def main():
         help="Number of validation samples to use",
     )
     parser.add_argument(
-        "--create-sample",
-        action="store_true",
-        help="Create a sample data file for testing",
-    )
-    parser.add_argument(
         "--api-key",
         type=str,
         default=None,
         help="API key (or set ZHIPUAI_API_KEY env var)",
     )
     parser.add_argument(
+        "--api-key-env",
+        type=str,
+        default=None,
+        help="Environment variable name that stores the API key (default: ZHIPUAI_API_KEY)",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default="glm-4.6v",
-        choices=["glm-4.6v", "glm-4.5-air", "glm-4"],
-        help="GLM model to use",
+        help="Model name to use (e.g., glm-4.6v, glm-4.5-air, glm-4)",
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default=None,
+        help="Optional API base URL override",
     )
 
     args = parser.parse_args()
-
-    # Handle sample creation
-    if args.create_sample:
-        print("Creating sample GSM8K data file...")
-        create_sample_gsm8k()
-        print("Done! You can now run with --train-data data/gsm8k_sample.jsonl")
-        return
 
     # Load config
     config = load_config(args.config)
 
     # Override with command line args
+    if args.api_key_env:
+        config["api_key_env"] = args.api_key_env
+    if args.base_url:
+        config["base_url"] = args.base_url
     if args.api_key:
-        os.environ["ZHIPUAI_API_KEY"] = args.api_key
+        os.environ[config["api_key_env"]] = args.api_key
     config["train_size"] = args.train_size
     config["val_size"] = args.val_size
-    config["task_type"] = args.task
+    config["task_type"] = "finer"
     config["model"] = args.model
 
     # Load data
@@ -374,14 +393,8 @@ def main():
     print(f"  Train: {args.train_data}")
     print(f"  Val: {args.val_data}")
 
-    if args.task == "gsm8k":
-        train_data = load_gsm8k(args.train_data, max_samples=args.train_size)
-        val_data = load_gsm8k(args.val_data, max_samples=args.val_size)
-    elif args.task == "finer":
-        train_data = load_finer(args.train_data, max_samples=args.train_size)
-        val_data = load_finer(args.val_data, max_samples=args.val_size)
-    else:
-        raise ValueError(f"Unknown task type: {args.task}")
+    train_data = load_finer(args.train_data, max_samples=args.train_size)
+    val_data = load_finer(args.val_data, max_samples=args.val_size)
 
     print_data_stats(train_data, "Training Data")
     print_data_stats(val_data, "Validation Data")

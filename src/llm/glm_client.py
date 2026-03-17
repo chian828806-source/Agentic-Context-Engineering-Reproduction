@@ -5,20 +5,32 @@ from typing import Optional, Dict, Any, List
 from zai import ZhipuAiClient
 from src.utils.env import load_env
 
+
 class GLMClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://open.bigmodel.cn/api/paas/v4/",
         model: str = "glm-4.6",
+        api_key_env: str = "ZHIPUAI_API_KEY",
         max_retries: int = 3,
         retry_delay: float = 1.0,
         timeout: float = 120.0,
     ):
+        """
+        GLM client wrapper.
+
+        Args:
+            api_key: Explicit API key override (highest priority)
+            base_url: API base URL
+            model: Model name (selectable by user)
+            api_key_env: Env var name that stores the API key
+        """
         load_env()
-        self.api_key = api_key or os.getenv("ZHIPUAI_API_KEY")
+        self.api_key_env = api_key_env
+        self.api_key = api_key or os.getenv(self.api_key_env)
         if not self.api_key:
-            raise ValueError("API key not provided.")
+            raise ValueError(f"API key not provided. Set {self.api_key_env} or pass api_key.")
 
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -79,15 +91,12 @@ class GLMClient:
                     params["response_format"] = response_format
 
                 response = self.client.chat.completions.create(**params)
-                
-                # --- 核心修复逻辑 ---
+
+                # Prefer standard content; fall back to reasoning_content if empty.
                 message_obj = response.choices[0].message
-                content = getattr(message_obj, 'content', '') or ''
-                reasoning = getattr(message_obj, 'reasoning_content', '') or ''
-                
-                # 如果标准内容为空但有推理内容，则使用推理内容
+                content = getattr(message_obj, "content", "") or ""
+                reasoning = getattr(message_obj, "reasoning_content", "") or ""
                 final_res = content if content.strip() else reasoning
-                # ------------------
 
                 if hasattr(response, "usage") and response.usage:
                     self.total_prompt_tokens += response.usage.prompt_tokens
@@ -101,7 +110,7 @@ class GLMClient:
                 last_error = e
                 if any(x in str(e).lower() for x in ["authentication", "api key"]):
                     raise RuntimeError(f"Auth error: {e}")
-                
+
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay * (2 ** attempt))
                     continue
@@ -123,13 +132,11 @@ class GLMClient:
             system_prompt=system_prompt,
         )
         try:
-            # 清理 Markdown 代码块包裹
             clean_json = response.strip()
             if clean_json.startswith("```"):
                 clean_json = clean_json.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             if clean_json.startswith("json"):
                 clean_json = clean_json[4:].strip()
-                
             return json.loads(clean_json)
         except Exception as e:
             raise ValueError(f"JSON parse error: {e}, Content: {response[:200]}")
@@ -144,14 +151,14 @@ class GLMClient:
 
     def check_api_connection(self) -> bool:
         try:
-            # 对于推理模型，要求它给出简短回答
             response = self.call(prompt="Respond with only 'OK'", temperature=0.0, max_tokens=10)
             return "OK" in response.upper()
-        except:
+        except Exception:
             return False
 
+
 if __name__ == "__main__":
-    # 快速测试
+    # Quick local test
     client = GLMClient(model="glm-4.5-air")
     print(f"Connection: {client.check_api_connection()}")
     print(f"Usage: {client.get_token_usage()}")

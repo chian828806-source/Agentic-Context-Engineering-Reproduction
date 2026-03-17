@@ -1,13 +1,11 @@
 """
-Reflector Node for ACE Framework
-
-The Reflector node analyzes errors and generates reflections on what went wrong.
+Reflector Node for ACE Framework (FINER-only)
 """
 
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from ..llm.glm_client import GLMClient
-from ..prompts.reflector_prompts import get_reflector_prompt, compare_answers_numeric
+from ..prompts.reflector_prompts import get_reflector_prompt
 
 
 class ReflectorNode:
@@ -26,7 +24,7 @@ class ReflectorNode:
         llm_client: GLMClient,
         max_retries: int = 3,
         temperature: float = 0.3,
-        task_type: str = "gsm8k",
+        task_type: str = "finer",
     ):
         """
         Initialize the Reflector node.
@@ -35,7 +33,7 @@ class ReflectorNode:
             llm_client: GLM-4.6 client instance
             max_retries: Maximum number of retry attempts
             temperature: Sampling temperature (lower for consistent reflection)
-            task_type: Type of task
+            task_type: Type of task (finer)
         """
         self.llm_client = llm_client
         self.max_retries = max_retries
@@ -65,10 +63,7 @@ class ReflectorNode:
         playbook = state.get("current_playbook", {})
 
         # First check if answer is correct
-        is_correct, _ = compare_answers_numeric(
-            str(generated_answer),
-            str(ground_truth),
-        )
+        is_correct = self._compare_finer_answers(generated_answer, ground_truth)
 
         if is_correct:
             # No reflection needed for correct answers
@@ -81,12 +76,12 @@ class ReflectorNode:
 
         # Build reflection prompt
         prompt = get_reflector_prompt(
-            question=sample.get("question", ""),
+            question=sample.get("text", ""),
             model_reasoning=generator_trace,
             model_answer=str(generated_answer),
             ground_truth=str(ground_truth),
             playbook=playbook,
-            task_type=self.task_type,
+            environment_feedback="",
         )
 
         # Call LLM with retry logic
@@ -120,9 +115,8 @@ class ReflectorNode:
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the Reflector."""
         return (
-            "You are an expert educator analyzing student work. "
-            "Provide specific, actionable feedback that helps identify mistakes and their root causes. "
-            "Be precise about what went wrong and how to correct it."
+            "You are an expert analyst and educator. Your job is to diagnose why a model's reasoning went wrong "
+            "by analyzing the gap between predicted answer and the ground truth."
         )
 
     def _create_fallback_reflection(
@@ -144,12 +138,42 @@ class ReflectorNode:
         """
         return {
             "reasoning": f"The model's answer ({generated_answer}) differs from the ground truth ({ground_truth}). "
-                        f"Please review the calculation steps carefully.",
+                        f"Please review the tagging steps carefully.",
             "error_identification": f"Answer mismatch: got {generated_answer}, expected {ground_truth}",
             "root_cause_analysis": "Unable to determine - LLM reflection call failed.",
-            "correct_approach": f"The correct answer is {ground_truth}. Review the reasoning steps to find the error.",
-            "key_insight": "Always double-check arithmetic calculations and ensure the final answer matches what the question asks for.",
+            "correct_approach": "Align tags with the token list and ensure each token has a valid FINER tag.",
+            "key_insight": "Always check the tag sequence length and BIO consistency against tokens.",
         }
+
+    @staticmethod
+    def _parse_ner_list(value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        return [str(v) for v in parsed]
+                except Exception:
+                    pass
+            return text.split()
+        return None
+
+    def _compare_finer_answers(self, generated_answer: Any, ground_truth_ner: Any) -> bool:
+        gt_list = self._parse_ner_list(ground_truth_ner)
+        gen_list = self._parse_ner_list(generated_answer)
+
+        if gt_list is None or gen_list is None:
+            return False
+        if len(gt_list) != len(gen_list):
+            return False
+        return all(g == t for g, t in zip(gen_list, gt_list))
 
     def batch_reflect(
         self,
@@ -172,7 +196,7 @@ class ReflectorNode:
             state = {
                 "current_sample": sample,
                 "generated_answer": sample.get("generated_answer"),
-                "ground_truth": sample.get("ground_truth"),
+                "ground_truth": sample.get("ground_truth_ner"),
                 "generator_trace": sample.get("trace", ""),
                 "current_playbook": playbook,
             }

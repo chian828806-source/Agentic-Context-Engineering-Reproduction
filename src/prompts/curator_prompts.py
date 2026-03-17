@@ -1,67 +1,47 @@
 """
-Curator Prompt Templates for ACE Framework
-
-The Curator node updates the playbook based on reflections from errors.
+Curator Prompt Templates for ACE Framework (FINER-only)
 """
 
 from typing import Dict, Any, List
+from .generator_prompts import format_playbook
 
 
-# ============================================================================
-# GSM8K Curator Prompt
-# ============================================================================
+FINER_CURATOR_TEMPLATE = """You are a master curator of knowledge. Your job is to identify what new insights should be added to an existing playbook based on a reflection from a previous attempt.
 
-GSM8K_CURATOR_TEMPLATE = """You are a master curator of mathematical knowledge. Your job is to identify what new insights should be added to an existing playbook based on a reflection from a previous attempt.
+Context: - The playbook you created will be used to help answering similar questions. - The reflection is generated using ground truth answers that will NOT be available when the playbook is being used. So you need to come up with content that can aid the playbook user to create predictions that likely align with ground truth.
 
-CONTEXT:
-- The playbook you created will be used to help solve similar math problems.
-- The reflection is generated using ground truth answers that will NOT be available when the playbook is being used.
+CRITICAL: You MUST respond with valid JSON only. Do not use markdown formatting or code blocks.
 
-CRITICAL INSTRUCTIONS:
-- Review the existing playbook and the reflection from the previous attempt
-- Identify ONLY the NEW insights, strategies, or mistakes that are MISSING from the current playbook
-- Avoid redundancy - if similar advice already exists, only add new content that complements existing entries
-- Do NOT regenerate the entire playbook - only provide the additions needed
-- Focus on quality over quantity - a focused, well-organized playbook is better than an exhaustive one
-- Output ONLY a valid JSON object (no markdown, no code blocks)
+Instructions: - Review the existing playbook and the reflection from the previous attempt - Identify ONLY the NEW insights, strategies, or mistakes that are MISSING from the current playbook - Avoid redundancy - if similar advice already exists, only add new content that is a perfect complement to the existing playbook - Do NOT regenerate the entire playbook - only provide the additions needed - Focus on quality over quantity - a focused, well-organized playbook is better than an exhaustive one - Format your response as a PURE JSON object with specific sections - For any operation if no new content to add, return an empty list for the operations field - Be concise and specific - each addition should be actionable
 
-TRAINING CONTEXT:
+Training Context:
 - Total token budget: {token_budget} tokens
 - Training progress: Sample {current_step} out of {total_samples}
-- Current playbook size: {current_size} bullets
 
-CURRENT PLAYBOOK:
-{current_playbook}
+Current Playbook Stats:
+{playbook_stats}
 
-RECENT REFLECTION:
+Recent Reflection:
 {recent_reflection}
 
-QUESTION CONTEXT:
+Current Playbook:
+{current_playbook}
+
+Question Context:
 {question_context}
 
-Your output should be a JSON object with these exact fields:
-- reasoning: your chain of thought about what should be added
-- operations: a list of operations to perform on the playbook
+Your Task: Output ONLY a valid JSON object with these exact fields: - reasoning: your chain of thought / reasoning / thinking process, detailed analysis and calculations - operations: a list of operations to be performed on the playbook - type: the type of operation to be performed - section: the section to add the bullet to - content: the new content of the bullet
 
-Available operations:
-1. ADD: Create new bullet points
-   - type: "ADD"
-   - section: one of the following sections:
-     * "strategies_and_hard_rules" - High-level approaches and rules
-     * "formulas_and_calculations" - Mathematical formulas and patterns
-     * "verification_checklist" - Steps to verify correctness
-     * "common_mistakes" - Known pitfalls to avoid
-     * "apis_to_use_for_specific_information" - Domain-specific guidance
-   - content: the new content to add (concise, actionable)
+Available Operations: 1. ADD: Create new bullet points with fresh IDs - section: the section to add the new bullet to - content: the new content of the bullet. Note: no need to include the bullet_id in the content like '[ctx-00263] helpful=1 harmful=0 ::' the bullet_id will be added by the system.
 
-RESPONSE FORMAT (JSON only, no markdown):
+RESPONSE FORMAT - Output ONLY this JSON structure (no markdown, no code blocks):
 {{
-  "reasoning": "[Your reasoning about what should be added to the playbook]",
-  "operations": [
+  "reasoning": "[Your chain of thought / reasoning / thinking process, detailed analysis and calculations here]",
+  "operations":[
     {{
       "type": "ADD",
-      "section": "strategies_and_hard_rules",
-      "content": "[New strategy or rule - be specific and actionable]"
+      "section": "formulas_and_calculations",
+      "content": "[New calculation method...]"
     }}
   ]
 }}"""
@@ -74,170 +54,40 @@ def get_curator_prompt(
     token_budget: int,
     current_step: int,
     total_samples: int,
-    task_type: str = "gsm8k",
+    task_type: str = "finer",
 ) -> str:
     """
-    Build the Curator prompt for updating the playbook.
-
-    Args:
-        question_context: The original question
-        current_playbook: Current playbook state
-        reflection: Reflection from Reflector node
-        token_budget: Maximum tokens for playbook
-        current_step: Current sample number
-        total_samples: Total number of samples
-        task_type: Type of task
-
-    Returns:
-        Formatted prompt string
+    Build the Curator prompt for FINER tasks.
     """
-    from .generator_prompts import format_playbook
-
-    playbook_text = format_playbook(current_playbook, task_type=task_type)
-    current_size = sum(len(items) for items in current_playbook.values())
-
-    # Format reflection for display
-    reflection_text = f"""
-Error Identification: {reflection.get('error_identification', '')}
-Root Cause: {reflection.get('root_cause_analysis', '')}
-Correct Approach: {reflection.get('correct_approach', '')}
-Key Insight: {reflection.get('key_insight', '')}
-""".strip()
-
-    if task_type == "gsm8k":
-        return GSM8K_CURATOR_TEMPLATE.format(
-            token_budget=token_budget,
-            current_step=current_step,
-            total_samples=total_samples,
-            current_size=current_size,
-            current_playbook=playbook_text,
-            recent_reflection=reflection_text,
-            question_context=question_context,
-        )
-    else:
-        return GSM8K_CURATOR_TEMPLATE.format(
-            token_budget=token_budget,
-            current_step=current_step,
-            total_samples=total_samples,
-            current_size=current_size,
-            current_playbook=playbook_text,
-            recent_reflection=reflection_text,
-            question_context=question_context,
-        )
-
-
-# ============================================================================
-# FINER Curator Prompt (for financial tasks)
-# ============================================================================
-
-FINER_CURATOR_TEMPLATE = """You are a master curator of financial knowledge. Your job is to update the playbook based on financial analysis reflections.
-
-CONTEXT:
-- The playbook helps with XBRL tagging, financial calculations, and document analysis.
-- Reflections come from ground truth analysis not available during inference.
-
-CURRENT PLAYBOOK STATS:
-{playbook_stats}
-
-CURRENT PLAYBOOK:
-{current_playbook}
-
-RECENT REFLECTION:
-{recent_reflection}
-
-QUESTION:
-{question_context}
-
-Available sections for additions:
-- strategies_and_hard_rules: Financial analysis approaches
-- formulas_and_calculations: Accounting formulas and calculations
-- verification_checklist: XBRL tagging and format checks
-- common_mistakes: Financial reporting pitfalls
-- apis_to_use_for_specific_information: Domain-specific guidance
-
-Output ONLY JSON:
-{{
-  "reasoning": "[Your reasoning]",
-  "operations": [
-    {{
-      "type": "ADD",
-      "section": "formulas_and_calculations",
-      "content": "[Formula or calculation method]"
-    }}
-  ]
-}}"""
-
-
-def get_finer_curator_prompt(
-    question_context: str,
-    current_playbook: Dict[str, List[str]],
-    reflection: Dict[str, Any],
-    playbook_stats: Dict[str, Any],
-) -> str:
-    """
-    Build the Curator prompt for FINER (financial) tasks.
-
-    Args:
-        question_context: The financial question
-        current_playbook: Current playbook state
-        reflection: Reflection from Reflector
-        playbook_stats: Statistics about current playbook
-
-    Returns:
-        Formatted prompt string
-    """
-    from .generator_prompts import format_playbook
-
-    playbook_text = format_playbook(current_playbook, task_type="finer")
+    playbook_text = format_playbook(current_playbook)
 
     stats_text = f"""
-Total bullets: {playbook_stats.get('total_bullets', 0)}
+Total bullets: {sum(len(items) for items in current_playbook.values())}
 Strategies: {len(current_playbook.get('strategies_and_hard_rules', []))}
 Formulas: {len(current_playbook.get('formulas_and_calculations', []))}
 Checklist items: {len(current_playbook.get('verification_checklist', []))}
 Common mistakes: {len(current_playbook.get('common_mistakes', []))}
+APIs/Domain Guidance: {len(current_playbook.get('apis_to_use_for_specific_information', []))}
 """.strip()
 
     reflection_text = f"""
-Error: {reflection.get('error_identification', '')}
-Root Cause: {reflection.get('root_cause_analysis', '')}
+Reasoning: {reflection.get('reasoning', '')}
+Error Identification: {reflection.get('error_identification', '')}
+Root Cause Analysis: {reflection.get('root_cause_analysis', '')}
 Correct Approach: {reflection.get('correct_approach', '')}
 Key Insight: {reflection.get('key_insight', '')}
+Bullet Tags: {reflection.get('bullet_tags', '')}
 """.strip()
 
     return FINER_CURATOR_TEMPLATE.format(
+        token_budget=token_budget,
+        current_step=current_step,
+        total_samples=total_samples,
         playbook_stats=stats_text,
         current_playbook=playbook_text,
         recent_reflection=reflection_text,
         question_context=question_context,
     )
-
-
-# ============================================================================
-# Batch Curator Prompt (for processing multiple reflections)
-# ============================================================================
-
-BATCH_CURATOR_TEMPLATE = """You are a master curator updating a playbook based on multiple reflections.
-
-CURRENT PLAYBOOK:
-{current_playbook}
-
-MULTIPLE REFLECTIONS:
-{reflections}
-
-Identify common patterns and unique insights across all reflections.
-
-Output ONLY JSON:
-{{
-  "reasoning": "[Analysis of common patterns]",
-  "operations": [
-    {{
-      "type": "ADD",
-      "section": "strategies_and_hard_rules",
-      "content": "[New consolidated strategy]"
-    }}
-  ]
-}}"""
 
 
 def get_batch_curator_prompt(
@@ -246,16 +96,7 @@ def get_batch_curator_prompt(
 ) -> str:
     """
     Build a batch Curator prompt for multiple reflections.
-
-    Args:
-        current_playbook: Current playbook state
-        reflections: List of reflections
-
-    Returns:
-        Formatted prompt string
     """
-    from .generator_prompts import format_playbook
-
     playbook_text = format_playbook(current_playbook)
 
     reflections_text = ""
@@ -264,15 +105,24 @@ def get_batch_curator_prompt(
         reflections_text += f"Error: {ref.get('error_identification', '')}\n"
         reflections_text += f"Insight: {ref.get('key_insight', '')}\n"
 
-    return BATCH_CURATOR_TEMPLATE.format(
-        current_playbook=playbook_text,
-        reflections=reflections_text.strip(),
+    return (
+        "You are a master curator updating a playbook based on multiple reflections.\n\n"
+        f"CURRENT PLAYBOOK:\n{playbook_text}\n\n"
+        f"MULTIPLE REFLECTIONS:\n{reflections_text.strip()}\n\n"
+        "Identify common patterns and unique insights across all reflections.\n\n"
+        "Output ONLY JSON:\n"
+        "{\n"
+        '  "reasoning": "[Analysis of common patterns]",\n'
+        '  "operations": [\n'
+        "    {\n"
+        '      "type": "ADD",\n'
+        '      "section": "strategies_and_hard_rules",\n'
+        '      "content": "[New consolidated strategy]"\n'
+        "    }\n"
+        "  ]\n"
+        "}"
     )
 
-
-# ============================================================================
-# Curator Operation Functions
-# ============================================================================
 
 def apply_curator_operations(
     playbook: Dict[str, List[str]],
@@ -280,13 +130,6 @@ def apply_curator_operations(
 ) -> Dict[str, List[str]]:
     """
     Apply curator operations to update the playbook.
-
-    Args:
-        playbook: Current playbook dictionary
-        operations: List of operations from Curator
-
-    Returns:
-        Updated playbook dictionary
     """
     result = {k: v.copy() for k, v in playbook.items()}
 
@@ -306,7 +149,6 @@ def apply_curator_operations(
             content = op.get("content", "")
 
             if section not in valid_sections:
-                # Try to match partial section name
                 for valid in valid_sections:
                     if section.lower() in valid.lower() or valid.lower() in section.lower():
                         section = valid
@@ -315,7 +157,6 @@ def apply_curator_operations(
             if section not in result:
                 result[section] = []
 
-            # Check for duplicates
             if content and content not in result[section]:
                 result[section].append(content)
 
@@ -327,7 +168,6 @@ def apply_curator_operations(
                 result[section].remove(content)
 
         elif op_type == "UPDATE":
-            # Update existing entry
             section = op.get("section")
             old_content = op.get("old_content", "")
             new_content = op.get("new_content", "")
@@ -346,16 +186,6 @@ def compress_playbook_if_needed(
 ) -> Dict[str, List[str]]:
     """
     Compress playbook if it exceeds size limits.
-
-    Keeps the most recent entries (which are typically more refined).
-
-    Args:
-        playbook: Current playbook
-        max_bullets_per_section: Max bullets to keep per section
-        max_total_bullets: Max total bullets across all sections
-
-    Returns:
-        Compressed playbook
     """
     result = {}
 
@@ -365,10 +195,8 @@ def compress_playbook_if_needed(
         else:
             result[section] = []
 
-    # If still too large, reduce further
     total = sum(len(items) for items in result.values())
     if total > max_total_bullets:
-        # Prune proportionally
         for section in result:
             keep = int(len(result[section]) * max_total_bullets / total)
             result[section] = result[section][-max(keep, 1):]
@@ -381,12 +209,6 @@ def deduplicate_playbook(
 ) -> Dict[str, List[str]]:
     """
     Remove duplicate entries from playbook while preserving order.
-
-    Args:
-        playbook: Current playbook
-
-    Returns:
-        Deduplicated playbook
     """
     result = {}
 
@@ -394,7 +216,6 @@ def deduplicate_playbook(
         seen = set()
         unique_items = []
         for item in items:
-            # Normalize for comparison
             normalized = item.strip().lower()
             if normalized not in seen and normalized:
                 seen.add(normalized)
