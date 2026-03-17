@@ -5,7 +5,7 @@ train_data_sample.md
 create_train_md.py
 claude.md
 ACE_markdown.md
-✳ Claude Code.txt
-
+*cc.txt
 data/
 *.jsonl
+logs/

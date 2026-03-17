@@ -66,19 +66,15 @@ class GeneratorNode:
                 "bullet_ids": [],
             }
 
-        text = sample["text"]
+        question = sample.get("question", "")
+        context = sample.get("context", sample.get("text", ""))
 
-        tokens = sample.get("tokens", [])
-        context = ""
-        if tokens:
-            context = f"Tokens: {tokens}"
-
-        # Build prompt
+        # Build prompt (paper-aligned: question + context + reflection)
         prompt = get_generator_prompt(
-            question=text,
+            question=question,
             playbook=playbook,
             context=context,
-            reflection="{}",
+            reflection="(empty)",
         )
 
         # Call LLM with retry logic
@@ -131,9 +127,8 @@ class GeneratorNode:
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the Generator."""
         return (
-            "You are an analysis expert tasked with answering questions using your knowledge, "
-            "a curated playbook of strategies and insights and a reflection that goes over the "
-            "diagnosis of all previous mistakes made while answering the question."
+            "You are an analysis expert for FINER sequence labeling. "
+            "Return final_answer as a JSON array of tags with the same length as the tokens."
         )
 
     def _parse_fallback_response(self, response_text: str) -> Dict[str, str]:
@@ -169,7 +164,7 @@ class GeneratorNode:
         for pattern in answer_patterns:
             match = re.search(pattern, response_text, re.IGNORECASE)
             if match:
-                answer = match.group(1).replace(",", "")
+                answer = match.group(1).strip()
                 break
 
         if not answer:
@@ -179,6 +174,7 @@ class GeneratorNode:
             "reasoning": reasoning[:1000],  # Limit trace length
             "final_answer": answer,
         }
+
 
     def batch_generate(
         self,

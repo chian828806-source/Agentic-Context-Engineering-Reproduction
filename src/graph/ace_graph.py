@@ -123,29 +123,37 @@ class ACEGraph:
 
     def _generator_node(self, state: ACEState) -> Dict[str, Any]:
         """Execute Generator node."""
+        print("[graph] generator start", flush=True)
         result = self.generator(state)
+        print("[graph] generator done", flush=True)
         return result
 
     def _reflector_node(self, state: ACEState) -> Dict[str, Any]:
         """Execute Reflector node."""
+        print("[graph] reflector start", flush=True)
         result = self.reflector(state)
+        print("[graph] reflector done", flush=True)
         return result
 
     def _curator_node(self, state: ACEState) -> Dict[str, Any]:
         """Execute Curator node."""
+        print("[graph] curator start", flush=True)
         result = self.curator(state)
 
         # Update last modified timestamp
         state["current_playbook"] = result["current_playbook"]
+        print("[graph] curator done", flush=True)
 
         return result
 
     def _evaluator_node(self, state: ACEState) -> Dict[str, Any]:
         """Quick evaluation for single sample."""
+        print("[graph] evaluator(start) quick", flush=True)
         generated = state.get("generated_answer")
         ground_truth = state.get("ground_truth")
 
         if generated is None or ground_truth is None:
+            print("[graph] evaluator quick skipped (missing data)", flush=True)
             return {"error_samples": []}
 
         is_correct = self.evaluator.compare_finer_answers(generated, ground_truth)
@@ -158,8 +166,10 @@ class ACEGraph:
                 "trace": state.get("generator_trace", ""),
                 "is_correct": False,
             }
+            print("[graph] evaluator quick done (incorrect)", flush=True)
             return {"error_samples": [error_sample]}
 
+        print("[graph] evaluator quick done (correct)", flush=True)
         return {"error_samples": []}
 
     def _evaluator_full_node(self, state: ACEState) -> Dict[str, Any]:

@@ -122,22 +122,25 @@ def initialize_state(
     """
     config = config or {}
 
-    # Initial playbook with basic math problem-solving strategies
+    # Initial playbook for FINER sequence labeling
     initial_playbook = {
         "strategies_and_hard_rules": [
-            "Carefully read the entire problem before starting to solve it.",
-            "Identify what the question is asking for - what quantity needs to be found.",
-            "Break down complex problems into smaller, manageable steps.",
-            "Write down each step clearly to avoid confusion.",
-            "Always check that your answer makes sense in the context of the problem.",
+            "Determine the task is sequence labeling and output a tag for every token.",
+            "Final answer must be a JSON array of tags with the same length as the token list.",
+            "Tag tokens in order; do not add or omit tokens.",
+            "Do not assume header/metadata is all 'O'—still scan for entity mentions.",
+            "Use B- and I- tags consistently for multi-token entities.",
         ],
         "formulas_and_calculations": [],
         "verification_checklist": [
-            "Double-check all arithmetic calculations.",
-            "Verify that units match the expected answer format.",
-            "Ensure the final answer directly answers the question asked.",
+            "Check tag sequence length equals token count.",
+            "Verify tags are valid FINER tags (e.g., O, B-*, I-*).",
+            "Ensure entity spans use correct B-/I- transitions.",
         ],
-        "common_mistakes": [],
+        "common_mistakes": [
+            "Do not output natural language analysis instead of tag sequences.",
+            "Do not output tags with missing or extra tokens.",
+        ],
         "apis_to_use_for_specific_information": [],
     }
 

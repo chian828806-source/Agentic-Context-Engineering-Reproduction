@@ -87,14 +87,43 @@ class EvaluatorNode:
         return None
 
     def compare_finer_answers(self, generated_answer: Any, ground_truth_ner: Any) -> bool:
-        gt_list = self._parse_ner_list(ground_truth_ner)
-        gen_list = self._parse_ner_list(generated_answer)
+        pred = self._normalize_finer_answer(generated_answer)
+        label = self._normalize_finer_answer(ground_truth_ner)
 
-        if gt_list is None or gen_list is None:
+        if pred is None or label is None:
             return False
-        if len(gt_list) != len(gen_list):
-            return False
-        return all(g == t for g, t in zip(gen_list, gt_list))
+
+        if len(pred) != len(label):
+            if len(pred) > len(label):
+                pred = pred[:len(label)]
+            else:
+                pred = pred + ([""] * (len(label) - len(pred)))
+
+        for p, g in zip(pred, label):
+            try:
+                g_eval = eval(g)
+                p_eval = eval(p.replace(",", "").replace("$", ""))
+                if p_eval != g_eval:
+                    return False
+            except Exception:
+                if p != g:
+                    return False
+
+        return True
+
+    def _normalize_finer_answer(self, value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [str(v).lower().strip() for v in value]
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            # Prefer comma-separated tags (paper implementation)
+            parts = [p.lower().strip() for p in text.split(",")]
+            return parts
+        return None
 
     def create_error_report(
         self,

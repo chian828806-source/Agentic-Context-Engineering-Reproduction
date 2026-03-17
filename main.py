@@ -42,7 +42,7 @@ DEFAULT_CONFIG = {
 
     # Training settings
     "max_generations": 1000,
-    "total_epochs": 5,
+    "total_epochs": 1,
     "plateau_threshold": 3,
     "eval_every_n_samples": 50,
 
@@ -186,12 +186,15 @@ def train_ace(
 
         for sample_idx, sample in enumerate(train_data):
             sample_start = time.time()
+            print(f"\nStarting sample {sample_idx + 1}/{total_samples} (epoch {epoch + 1})...", flush=True)
             # Update state with current sample
             initial_state["current_sample"] = sample
-            initial_state["ground_truth"] = sample.get("ner_tags")
+            initial_state["ground_truth"] = sample.get("target", sample.get("ner_tags"))
 
             # Run one evolution step
+            print("Invoking graph...", flush=True)
             result = compiled_graph.invoke(initial_state)
+            print("Graph invoke complete.", flush=True)
 
             # Update state
             for key, value in result.items():

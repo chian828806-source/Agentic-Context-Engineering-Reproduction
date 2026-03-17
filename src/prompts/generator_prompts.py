@@ -7,9 +7,9 @@ from typing import Dict, List
 
 FINER_GENERATOR_TEMPLATE = """You are an analysis expert tasked with answering questions using your knowledge, a curated playbook of strategies and insights and a reflection that goes over the diagnosis of all previous mistakes made while answering the question.
 
-Instructions: - Read the playbook carefully and apply relevant strategies, formulas, and insights - Pay attention to common mistakes listed in the playbook and avoid them - Show your reasoning step-by-step - Be concise but thorough in your analysis - If the playbook contains relevant code snippets or formulas, use them appropriately - Double-check your calculations and logic before providing the final answer
+Instructions: - Read the playbook carefully and apply relevant strategies, formulas, and insights - Pay attention to common mistakes listed in the playbook and avoid them - Show your reasoning step-by-step - Be concise but thorough in your analysis - If the playbook contains relevant code snippets or formulas, use them appropriately - Double-check your calculations and logic before providing the final answer - IMPORTANT: This is a sequence labeling task. Your final_answer MUST be a comma-separated tag sequence with the SAME LENGTH as the provided tokens in Context, one tag per token, in order. Do NOT output natural language in final_answer.
 
-Your output should be a json object, which contains the following fields: - reasoning: your chain of thought / reasoning / thinking process, detailed analysis and calculations - bullet_ids: each line in the playbook has a bullet_id. all bulletpoints in the playbook that's relevant, helpful for you to answer this question, you should include their bullet_id in this list - final_answer: your concise final answer
+Your output should be a json object, which contains the following fields: - reasoning: your chain of thought / reasoning / thinking process, detailed analysis and calculations - bullet_ids: each line in the playbook has a bullet_id. all bulletpoints in the playbook that's relevant, helpful for you to answer this question, you should include their bullet_id in this list - final_answer: your concise final answer (comma-separated tags, length == tokens length)
 
 Playbook:
 {playbook}
@@ -27,8 +27,10 @@ Answer in this exact JSON format:
 {{
   "reasoning": "[Your chain of thought / reasoning / thinking process, detailed analysis and calculations]",
   "bullet_ids": ["calc-00001", "fin-00002"],
-  "final_answer": "[Your concise final answer here]"
-}}"""
+  "final_answer": "O, O, B-EquityMethodInvestments, O"
+}}
+
+The final_answer MUST be a comma-separated tag sequence, with length exactly equal to the number of tokens in Context."""
 
 
 def get_generator_prompt(

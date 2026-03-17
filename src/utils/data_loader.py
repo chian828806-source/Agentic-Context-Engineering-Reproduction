@@ -7,6 +7,11 @@ Expected FINER JSONL format (per *_example.jsonl):
   "tokens": [<str>, ...],
   "ner_tags": [<str>, ...]
 }
+
+This loader also prepares fields aligned with the paper repo:
+- context: joined token string
+- question: instruction string
+- target: comma-separated tag sequence
 """
 
 import json
@@ -78,11 +83,15 @@ def load_finer(
     for sample in raw_data:
         tokens = sample.get("tokens", [])
         text = " ".join(tokens)
+        ner_tags = sample.get("ner_tags", [])
         processed_data.append({
             "id": sample.get("id"),
             "text": text,
+            "context": text,
+            "question": "Perform FINER sequence labeling. Output a comma-separated tag for each token.",
             "tokens": tokens,
-            "ner_tags": sample.get("ner_tags", []),
+            "ner_tags": ner_tags,
+            "target": ", ".join(ner_tags),
             "original": sample,
         })
 
